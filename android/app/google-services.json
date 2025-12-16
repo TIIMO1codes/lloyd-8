@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "69127242012",
+    "project_id": "loginlloyd-1d7c7",
+    "storage_bucket": "loginlloyd-1d7c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:69127242012:android:2f3199fe75921058a6bad9",
+        "android_client_info": {
+          "package_name": "com.example.lloyd"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "69127242012-i95cjsuhovgia6knpmal00rsih09u60p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.lloyd",
+            "certificate_hash": "802a5e9e90ac2818265b2ffcdc4352ea2415a038"
+          }
+        },
+        {
+          "client_id": "69127242012-ckg92d6s2rj504v9e1hc7f3b5uke49hn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDI2saNXmFKRYvAVVMbaeHys3Q2p2iw_Iw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "69127242012-ckg92d6s2rj504v9e1hc7f3b5uke49hn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
