@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'lyrics_page.dart';
 
@@ -16,6 +18,24 @@ class _FavoritesPageState extends State<FavoritesPage> {
     Color(0xFF3A7717),
     Color(0xFF72BF00),
   ];
+
+  // ✅ FIX: asset OR local album art
+  Widget _buildAlbumArt(String path) {
+    if (path.startsWith('assets/')) {
+      return Image.asset(
+        path,
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+      );
+    }
+    return Image.file(
+      File(path),
+      width: 54,
+      height: 54,
+      fit: BoxFit.cover,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +80,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   padding: const EdgeInsets.only(left: 16),
                   child: Text(
                     '${favorites.length} Favorite Tracks',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 12),
                   ),
                 ),
               ),
@@ -84,29 +105,29 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       : ListView.separated(
                           itemCount: favorites.length,
                           separatorBuilder: (_, __) =>
-                              const Divider(color: Colors.white24, indent: 70),
+                              const Divider(
+                                  color: Colors.white24, indent: 70),
                           itemBuilder: (context, index) {
                             final song = favorites[index];
+
                             return ListTile(
                               leading: ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
-                                child: Image.asset(
-                                  song['albumArt']!,
-                                  width: 54,
-                                  height: 54,
-                                  fit: BoxFit.cover,
+                                child: _buildAlbumArt(
+                                  song['albumArt'] ?? '',
                                 ),
                               ),
                               title: Text(
-                                song['title']!,
+                                song['title'] ?? '',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               subtitle: Text(
-                                song['artist']!,
-                                style: const TextStyle(color: Colors.white70),
+                                song['artist'] ?? '',
+                                style: const TextStyle(
+                                    color: Colors.white70),
                               ),
 
                               trailing: IconButton(
@@ -122,7 +143,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               ),
 
                               onTap: () {
-                                final realIndex = widget.songs.indexOf(song);
+                                final realIndex =
+                                    widget.songs.indexOf(song);
 
                                 Navigator.push(
                                   context,

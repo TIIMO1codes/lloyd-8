@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class AddSongPage extends StatefulWidget {
   const AddSongPage({super.key});
+
   static List<Map<String, String>> addedSongs = [];
 
   @override
@@ -28,7 +29,7 @@ class _AddSongPageState extends State<AddSongPage> {
     Color(0xFF72BF00),
   ];
 
-  // ---------- FIXED MP3 PICKER ----------
+  // ---------- MP3 PICKER ----------
   Future<void> pickMp3() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -48,7 +49,7 @@ class _AddSongPageState extends State<AddSongPage> {
     }
   }
 
-  // ---------- FIXED IMAGE PICKER ----------
+  // ---------- IMAGE PICKER ----------
   Future<void> pickAlbum() async {
     try {
       final img = await ImagePicker().pickImage(
@@ -68,17 +69,8 @@ class _AddSongPageState extends State<AddSongPage> {
     }
   }
 
-  // ---------- FIXED SAVE FUNCTION ----------
+  // ---------- SAVE SONG (FIXED: NO LOGIN REQUIRED) ----------
   Future<void> saveSong() async {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must be logged in')),
-      );
-      return;
-    }
-
     if (_titleCtrl.text.trim().isEmpty ||
         _artistCtrl.text.trim().isEmpty ||
         mp3File == null) {
@@ -102,23 +94,29 @@ class _AddSongPageState extends State<AddSongPage> {
         await albumFile!.copy(albumPath);
       }
 
+      final user = FirebaseAuth.instance.currentUser;
+
+      // SAVE TO FIRESTORE (guest allowed)
       await FirebaseFirestore.instance.collection('songs').add({
         'title': _titleCtrl.text.trim(),
         'artist': _artistCtrl.text.trim(),
         'lyrics': _lyricsCtrl.text.trim(),
         'mp3Path': savedMp3.path,
         'albumPath': albumPath,
-        'createdBy': user.uid,
+        'createdBy': user?.uid ?? 'guest',
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // SAVE LOCALLY FOR HOME PAGE
       AddSongPage.addedSongs.add({
         'title': _titleCtrl.text.trim(),
         'artist': _artistCtrl.text.trim(),
-        'musicUrl': savedMp3.path,      // local MP3
+        'musicUrl': savedMp3.path,
         'lyricsUrl': _lyricsCtrl.text.trim(),
-        'albumArt': albumPath ?? '',    // local image (may be empty)
+        'albumArt': albumPath ?? '',
         'favorite': 'false',
       });
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -133,7 +131,7 @@ class _AddSongPageState extends State<AddSongPage> {
     }
   }
 
-  // ---------- UI (UNCHANGED) ----------
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
     return Scaffold(

@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -7,7 +9,11 @@ class LyricsPage extends StatefulWidget {
   final List<Map<String, String>> songs;
   final int startIndex;
 
-  const LyricsPage({super.key, required this.songs, this.startIndex = 0});
+  const LyricsPage({
+    super.key,
+    required this.songs,
+    this.startIndex = 0,
+  });
 
   @override
   State<LyricsPage> createState() => _LyricsPageState();
@@ -33,6 +39,7 @@ class _LyricsPageState extends State<LyricsPage>
   @override
   void initState() {
     super.initState();
+
     _songs = widget.songs;
     _currentIndex = widget.startIndex;
     _currentAlbumArt = _songs[_currentIndex]['albumArt'] ?? '';
@@ -51,7 +58,6 @@ class _LyricsPageState extends State<LyricsPage>
 
     _loadSong();
 
-    // Animated gradient background
     _colorController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -75,6 +81,7 @@ class _LyricsPageState extends State<LyricsPage>
     super.dispose();
   }
 
+  // ---------------- FIXED LOADER ----------------
   Future<void> _loadSong() async {
     final currentSong = _songs[_currentIndex];
     await _player.stop();
@@ -83,23 +90,39 @@ class _LyricsPageState extends State<LyricsPage>
       _isPlaying = false;
       _lyrics = "Loading lyrics...";
       _currentAlbumArt = currentSong['albumArt'] ?? '';
+      _position = Duration.zero;
+      _duration = Duration.zero;
     });
 
     final musicUrl = currentSong['musicUrl'] ?? '';
-    final lyricsPath = currentSong['lyricsUrl'] ?? '';
+    final lyricsData = currentSong['lyricsUrl'] ?? '';
 
+    // ✅ FIX LYRICS (asset OR plain text)
     try {
-      final data = await rootBundle.loadString(lyricsPath);
-      setState(() => _lyrics = data);
+      if (lyricsData.startsWith('assets/')) {
+        _lyrics = await rootBundle.loadString(lyricsData);
+      } else {
+        _lyrics =
+            lyricsData.isEmpty ? "Lyrics not available." : lyricsData;
+      }
     } catch (_) {
-      setState(() => _lyrics = "Lyrics not found.");
+      _lyrics = "Lyrics not found.";
     }
 
-    if (musicUrl.isNotEmpty) {
-      final assetRelative = musicUrl.replaceFirst('assets/', '');
-      await _player.setSource(AssetSource(assetRelative));
+    // ✅ FIX AUDIO (asset OR local file)
+    try {
+      if (musicUrl.startsWith('assets/')) {
+        await _player.setSource(
+          AssetSource(musicUrl.replaceFirst('assets/', '')),
+        );
+      } else {
+        await _player.setSource(DeviceFileSource(musicUrl));
+      }
+
       await _player.resume();
       setState(() => _isPlaying = true);
+    } catch (_) {
+      // silently fail (prevents crash)
     }
   }
 
@@ -118,7 +141,8 @@ class _LyricsPageState extends State<LyricsPage>
   }
 
   void _playPrevSong() {
-    _currentIndex = (_currentIndex - 1 + _songs.length) % _songs.length;
+    _currentIndex =
+        (_currentIndex - 1 + _songs.length) % _songs.length;
     _loadSong();
   }
 
@@ -127,17 +151,19 @@ class _LyricsPageState extends State<LyricsPage>
     return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
   }
 
-  Widget _buildAlbumArt(String? url) {
-    if (url == null || url.isEmpty) {
+  // ✅ FIX ALBUM ART (asset OR local)
+  Widget _buildAlbumArt(String? path) {
+    if (path == null || path.isEmpty) {
       return Container(
         color: Colors.white10,
-        child: const Icon(Icons.music_note, size: 64, color: Colors.white70),
+        child: const Icon(Icons.music_note,
+            size: 64, color: Colors.white70),
       );
     }
-    if (url.startsWith("http")) {
-      return Image.network(url, fit: BoxFit.cover);
+    if (path.startsWith('assets/')) {
+      return Image.asset(path, fit: BoxFit.cover);
     }
-    return Image.asset(url, fit: BoxFit.cover);
+    return Image.file(File(path), fit: BoxFit.cover);
   }
 
   @override
@@ -147,26 +173,22 @@ class _LyricsPageState extends State<LyricsPage>
     return Scaffold(
       body: Stack(
         children: [
-          // Animated gradient background
           AnimatedBuilder(
             animation: _colorController,
-            builder: (context, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      _colorAnimation1.value ?? Colors.green,
-                      _colorAnimation2.value ?? Colors.purple,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+            builder: (_, __) => Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    _colorAnimation1.value ?? Colors.green,
+                    _colorAnimation2.value ?? Colors.purple,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-              );
-            },
+              ),
+            ),
           ),
 
-          // Blurred album art background
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
@@ -180,25 +202,22 @@ class _LyricsPageState extends State<LyricsPage>
           SafeArea(
             child: Column(
               children: [
-                // Header
+                // HEADER
                 Row(
                   children: [
                     IconButton(
-                      icon: const Icon(
-                        Icons.arrow_drop_down,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.arrow_drop_down,
+                          color: Colors.white),
                       onPressed: () => Navigator.pop(context),
                     ),
                     const Spacer(),
-
-                    // Favorite button
                     InkWell(
                       onTap: () {
                         setState(() {
-                          song['favorite'] = song['favorite'] == 'true'
-                              ? 'false'
-                              : 'true';
+                          song['favorite'] =
+                              song['favorite'] == 'true'
+                                  ? 'false'
+                                  : 'true';
                         });
                       },
                       child: Icon(
@@ -215,52 +234,44 @@ class _LyricsPageState extends State<LyricsPage>
 
                 const SizedBox(height: 10),
 
-                // Album Art
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 200,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: _buildAlbumArt(_currentAlbumArt),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        song['title'] ?? '',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        song['artist'] ?? '',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
+                // ALBUM ART
+                Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _buildAlbumArt(_currentAlbumArt),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Text(
+                  song['title'] ?? '',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  song['artist'] ?? '',
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 14),
                 ),
 
                 const SizedBox(height: 20),
 
-                // Lyrics & Player Section
+                // LYRICS + PLAYER
                 Expanded(
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -288,45 +299,45 @@ class _LyricsPageState extends State<LyricsPage>
                           activeColor: Colors.white,
                           inactiveColor: Colors.white24,
                           value: _position.inSeconds.toDouble().clamp(
-                            0,
-                            _duration.inSeconds == 0
-                                ? 1
-                                : _duration.inSeconds.toDouble(),
-                          ),
+                                0,
+                                _duration.inSeconds == 0
+                                    ? 1
+                                    : _duration.inSeconds.toDouble(),
+                              ),
                           max: _duration.inSeconds == 0
                               ? 1
                               : _duration.inSeconds.toDouble(),
                           onChanged: (value) async {
-                            final newPos = Duration(seconds: value.toInt());
-                            await _player.seek(newPos);
+                            await _player.seek(
+                              Duration(seconds: value.toInt()),
+                            );
                           },
                         ),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              _formatTime(_position),
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                            Text(
-                              _formatTime(_duration),
-                              style: const TextStyle(color: Colors.white70),
-                            ),
+                            Text(_formatTime(_position),
+                                style: const TextStyle(
+                                    color: Colors.white70)),
+                            Text(_formatTime(_duration),
+                                style: const TextStyle(
+                                    color: Colors.white70)),
                           ],
                         ),
                         const SizedBox(height: 10),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisAlignment:
+                              MainAxisAlignment.center,
                           children: [
                             InkWell(
                               onTap: _playPrevSong,
-                              child: CircleAvatar(
+                              child: const CircleAvatar(
                                 radius: 28,
-                                backgroundColor: Colors.white.withOpacity(0.08),
-                                child: const Icon(
-                                  Icons.skip_previous,
-                                  color: Colors.white,
-                                ),
+                                backgroundColor:
+                                    Colors.white24,
+                                child: Icon(Icons.skip_previous,
+                                    color: Colors.white),
                               ),
                             ),
                             const SizedBox(width: 30),
@@ -334,9 +345,12 @@ class _LyricsPageState extends State<LyricsPage>
                               onTap: _togglePlay,
                               child: CircleAvatar(
                                 radius: 45,
-                                backgroundColor: Colors.white.withOpacity(0.15),
+                                backgroundColor:
+                                    Colors.white.withOpacity(0.15),
                                 child: Icon(
-                                  _isPlaying ? Icons.pause : Icons.play_arrow,
+                                  _isPlaying
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
                                   size: 40,
                                   color: Colors.white,
                                 ),
@@ -345,18 +359,16 @@ class _LyricsPageState extends State<LyricsPage>
                             const SizedBox(width: 30),
                             InkWell(
                               onTap: _playNextSong,
-                              child: CircleAvatar(
+                              child: const CircleAvatar(
                                 radius: 28,
-                                backgroundColor: Colors.white.withOpacity(0.08),
-                                child: const Icon(
-                                  Icons.skip_next,
-                                  color: Colors.white,
-                                ),
+                                backgroundColor:
+                                    Colors.white24,
+                                child: Icon(Icons.skip_next,
+                                    color: Colors.white),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
                       ],
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'lyrics_page.dart';
 import 'favorites_page.dart';
 import '../add_song.dart';
@@ -102,9 +103,14 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, String>> filteredSongs = [];
   final TextEditingController _searchController = TextEditingController();
 
+  // ---------------- INIT ----------------
   @override
   void initState() {
     super.initState();
+
+    // 🔥 MERGE USER-ADDED SONGS
+    songs.addAll(AddSongPage.addedSongs);
+
     filteredSongs = List.from(songs);
     _searchController.addListener(_onSearchChanged);
   }
@@ -116,17 +122,13 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  // ---------------- SEARCH ----------------
   void _onSearchChanged() {
     final q = _searchController.text.toLowerCase();
-    if (q.isEmpty) {
-      setState(() => filteredSongs = List.from(songs));
-      return;
-    }
     setState(() {
       filteredSongs = songs.where((s) {
-        final title = s['title']!.toLowerCase();
-        final artist = s['artist']!.toLowerCase();
-        return title.contains(q) || artist.contains(q);
+        return s['title']!.toLowerCase().contains(q) ||
+            s['artist']!.toLowerCase().contains(q);
       }).toList();
     });
   }
@@ -137,6 +139,7 @@ class _HomePageState extends State<HomePage> {
     Color(0xFF72BF00),
   ];
 
+  // ---------------- UI ----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -150,9 +153,10 @@ class _HomePageState extends State<HomePage> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12),
+            padding: const EdgeInsets.all(14),
             child: Column(
               children: [
+                // ---------------- HEADER ----------------
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -161,11 +165,12 @@ class _HomePageState extends State<HomePage> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 24,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     Row(
                       children: [
+                        // ADD SONG
                         IconButton(
                           icon: const Icon(Icons.add_circle, color: Colors.white),
                           onPressed: () {
@@ -174,17 +179,30 @@ class _HomePageState extends State<HomePage> {
                               MaterialPageRoute(
                                 builder: (_) => const AddSongPage(),
                               ),
-                            ).then((_) => setState(() {}));
+                            ).then((_) {
+                              setState(() {
+                                for (final song in AddSongPage.addedSongs) {
+                                  if (!songs.contains(song)) {
+                                    songs.add(song);
+                                  }
+                                }
+                                filteredSongs = List.from(songs);
+                              });
+                            });
                           },
-                        ),
+),
+
+
+                        // PROFILE MENU
                         PopupMenuButton<String>(
                           icon: CircleAvatar(
                             backgroundColor: Colors.white,
-                            child: Icon(Icons.person, color: Colors.green[700]),
-                          ),
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            backgroundImage: user?.photoURL != null
+                                ? NetworkImage(user!.photoURL!)
+                                : null,
+                            child: user?.photoURL == null
+                                ? Icon(Icons.person, color: Colors.green[700])
+                                : null,
                           ),
                           onSelected: (value) {
                             if (value == 'user') {
@@ -194,21 +212,21 @@ class _HomePageState extends State<HomePage> {
                                   title: const Text('Profile Info'),
                                   content: Column(
                                     mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'Name: ${user?.displayName ?? 'Guest'}',
-                                      ),
-                                      Text(
-                                        'Email: ${user?.email ?? 'guest@example.com'}',
-                                      ),
+                                      if (user?.photoURL != null)
+                                        CircleAvatar(
+                                          radius: 35,
+                                          backgroundImage:
+                                              NetworkImage(user!.photoURL!),
+                                        ),
+                                      const SizedBox(height: 12),
+                                      Text(user?.displayName ?? 'Guest'),
+                                      Text(user?.email ?? ''),
                                     ],
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context),
+                                      onPressed: () => Navigator.pop(context),
                                       child: const Text('Close'),
                                     ),
                                   ],
@@ -227,7 +245,7 @@ class _HomePageState extends State<HomePage> {
                               Navigator.pushReplacementNamed(context, '/');
                             }
                           },
-                          itemBuilder: (context) => const [
+                          itemBuilder: (_) => const [
                             PopupMenuItem(
                               value: 'user',
                               child: Text('Profile Info'),
@@ -238,17 +256,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                             PopupMenuItem(
                               value: 'logout',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.logout, color: Colors.red),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Logout',
-                                    style:
-                                        TextStyle(color: Colors.red),
-                                  ),
-                                ],
-                              ),
+                              child: Text('Logout'),
                             ),
                           ],
                         ),
@@ -257,139 +265,69 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
 
-                // Search bar
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search,
-                          color: Colors.white70),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            hintText:
-                                'Search songs or artists',
-                            hintStyle:
-                                TextStyle(color: Colors.white70),
-                            border: InputBorder.none,
-                          ),
-                        ),
-                      ),
-                      if (_searchController.text.isNotEmpty)
-                        GestureDetector(
-                          onTap: () {
-                            _searchController.clear();
-                            FocusScope.of(context).unfocus();
-                          },
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white70,
-                          ),
-                        ),
-                    ],
+                // ---------------- SEARCH ----------------
+                TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search, color: Colors.white70),
+                    hintText: 'Search songs or artists',
+                    hintStyle: TextStyle(color: Colors.white70),
+                    border: InputBorder.none,
                   ),
                 ),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${filteredSongs.length} Tracks',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Songs list
+                // ---------------- SONG LIST ----------------
                 Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: filteredSongs.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(
-                        color: Colors.white12,
-                        height: 8,
-                        indent: 72,
-                        endIndent: 12,
-                      ),
-                      itemBuilder: (context, index) {
-                        final song = filteredSongs[index];
+                  child: ListView.separated(
+                    itemCount: filteredSongs.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(color: Colors.white12),
+                    itemBuilder: (context, index) {
+                      final song = filteredSongs[index];
 
-                        return ListTile(
-                          contentPadding:
-                              const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
-                          ),
-                          leading: ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(10),
-                            child: song['albumArt']!
-                                    .startsWith('assets/')
-                                ? Image.asset(
-                                    song['albumArt']!,
-                                    width: 54,
-                                    height: 54,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Image.file(
-                                    File(song['albumArt']!),
-                                    width: 54,
-                                    height: 54,
-                                    fit: BoxFit.cover,
-                                  ),
-                          ),
-                          title: Text(
-                            song['title'] ?? '',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          subtitle: Text(
-                            song['artist'] ?? '',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                            ),
-                          ),
-                          trailing: const Icon(
-                            Icons.more_vert,
-                            color: Colors.white70,
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => LyricsPage(
-                                  songs: songs,
-                                  startIndex: index,
+                      return ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: song['albumArt']!.startsWith('assets/')
+                              ? Image.asset(
+                                  song['albumArt']!,
+                                  width: 55,
+                                  height: 55,
+                                  fit: BoxFit.cover,
+                                )
+                              : Image.file(
+                                  File(song['albumArt']!),
+                                  width: 55,
+                                  height: 55,
+                                  fit: BoxFit.cover,
                                 ),
+                        ),
+                        title: Text(
+                          song['title']!,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          song['artist']!,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => LyricsPage(
+                                songs: filteredSongs,
+                                startIndex: index,
                               ),
-                            ).then((_) => setState(() {}));
-                          },
-                        );
-                      },
-                    ),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ],
