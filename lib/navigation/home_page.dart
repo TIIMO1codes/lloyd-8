@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -15,7 +14,12 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final User? user = FirebaseAuth.instance.currentUser;
+  final User? firebaseUser = FirebaseAuth.instance.currentUser;
+
+  // 👤 USER INFO
+  String displayName = 'Guest';
+  String email = '';
+  String? photoUrl;
 
   final List<Map<String, String>> songs = [
     {
@@ -103,26 +107,45 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, String>> filteredSongs = [];
   final TextEditingController _searchController = TextEditingController();
 
-  // ---------------- INIT ----------------
+  // ================= INIT =================
   @override
   void initState() {
     super.initState();
 
-    // 🔥 MERGE USER-ADDED SONGS
     songs.addAll(AddSongPage.addedSongs);
-
     filteredSongs = List.from(songs);
     _searchController.addListener(_onSearchChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+  final args =
+      ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+  if (args != null && args['type'] == 'normal') {
+    // ✅ NORMAL LOGIN HAS PRIORITY
+    setState(() {
+      displayName = args['name'] ?? 'User';
+      email = args['email'] ?? '';
+      photoUrl = null;
+    });
+  } else if (firebaseUser != null) {
+    // ✅ GOOGLE LOGIN
+    setState(() {
+      displayName = firebaseUser!.displayName ?? 'Google User';
+      email = firebaseUser!.email ?? '';
+      photoUrl = firebaseUser!.photoURL;
+    });
+  }
+});
+
   }
 
   @override
   void dispose() {
-    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
   }
 
-  // ---------------- SEARCH ----------------
+  // ================= SEARCH =================
   void _onSearchChanged() {
     final q = _searchController.text.toLowerCase();
     setState(() {
@@ -139,7 +162,7 @@ class _HomePageState extends State<HomePage> {
     Color(0xFF72BF00),
   ];
 
-  // ---------------- UI ----------------
+  // ================= UI =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -156,7 +179,7 @@ class _HomePageState extends State<HomePage> {
             padding: const EdgeInsets.all(14),
             child: Column(
               children: [
-                // ---------------- HEADER ----------------
+                // ================= HEADER =================
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -170,9 +193,9 @@ class _HomePageState extends State<HomePage> {
                     ),
                     Row(
                       children: [
-                        // ADD SONG
                         IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.white),
+                          icon: const Icon(Icons.add_circle,
+                              color: Colors.white),
                           onPressed: () {
                             Navigator.push(
                               context,
@@ -181,57 +204,35 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ).then((_) {
                               setState(() {
-                                for (final song in AddSongPage.addedSongs) {
-                                  if (!songs.contains(song)) {
-                                    songs.add(song);
-                                  }
-                                }
+                                songs.addAll(AddSongPage.addedSongs);
                                 filteredSongs = List.from(songs);
                               });
                             });
                           },
-),
+                        ),
 
-
-                        // PROFILE MENU
+                        // ================= PROFILE MENU =================
                         PopupMenuButton<String>(
                           icon: CircleAvatar(
                             backgroundColor: Colors.white,
-                            backgroundImage: user?.photoURL != null
-                                ? NetworkImage(user!.photoURL!)
+                            backgroundImage: photoUrl != null
+                                ? NetworkImage(photoUrl!)
                                 : null,
-                            child: user?.photoURL == null
-                                ? Icon(Icons.person, color: Colors.green[700])
+                            child: photoUrl == null
+                                ? Text(
+                                    displayName.isNotEmpty
+                                        ? displayName[0].toUpperCase()
+                                        : 'G',
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
                                 : null,
                           ),
                           onSelected: (value) {
                             if (value == 'user') {
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text('Profile Info'),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (user?.photoURL != null)
-                                        CircleAvatar(
-                                          radius: 35,
-                                          backgroundImage:
-                                              NetworkImage(user!.photoURL!),
-                                        ),
-                                      const SizedBox(height: 12),
-                                      Text(user?.displayName ?? 'Guest'),
-                                      Text(user?.email ?? ''),
-                                    ],
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Close'),
-                                    ),
-                                  ],
-                                ),
-                              );
+                              _showProfileDialog();
                             } else if (value == 'favorites') {
                               Navigator.push(
                                 context,
@@ -267,12 +268,13 @@ class _HomePageState extends State<HomePage> {
 
                 const SizedBox(height: 12),
 
-                // ---------------- SEARCH ----------------
+                // ================= SEARCH =================
                 TextField(
                   controller: _searchController,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search, color: Colors.white70),
+                    prefixIcon:
+                        Icon(Icons.search, color: Colors.white70),
                     hintText: 'Search songs or artists',
                     hintStyle: TextStyle(color: Colors.white70),
                     border: InputBorder.none,
@@ -281,7 +283,7 @@ class _HomePageState extends State<HomePage> {
 
                 const SizedBox(height: 12),
 
-                // ---------------- SONG LIST ----------------
+                // ================= SONG LIST =================
                 Expanded(
                   child: ListView.separated(
                     itemCount: filteredSongs.length,
@@ -309,11 +311,13 @@ class _HomePageState extends State<HomePage> {
                         ),
                         title: Text(
                           song['title']!,
-                          style: const TextStyle(color: Colors.white),
+                          style:
+                              const TextStyle(color: Colors.white),
                         ),
                         subtitle: Text(
                           song['artist']!,
-                          style: const TextStyle(color: Colors.white70),
+                          style:
+                              const TextStyle(color: Colors.white70),
                         ),
                         onTap: () {
                           Navigator.push(
@@ -332,6 +336,66 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ================= PROFILE DIALOG =================
+  void _showProfileDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 42,
+                backgroundImage:
+                    photoUrl != null ? NetworkImage(photoUrl!) : null,
+                backgroundColor: Colors.green.shade100,
+                child: photoUrl == null
+                    ? Text(
+                        displayName.isNotEmpty
+                            ? displayName[0].toUpperCase()
+                            : 'G',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                displayName,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (email.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  email,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
           ),
         ),
       ),

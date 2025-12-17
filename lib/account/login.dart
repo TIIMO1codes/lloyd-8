@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+
 import 'signup.dart';
 import '../navigation/home_page.dart';
 import '../otp_page.dart';
-import '../login_notifier.dart'; // ✅ ADD THIS
+import '../login_notifier.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,16 +23,27 @@ class _LoginPageState extends State<LoginPage> {
 
   String errorMessage = "";
   bool isSigningIn = false;
+  bool isLoggingIn = false;
 
-  // ---------------- NORMAL LOGIN ----------------
+  // ================= NORMAL LOGIN =================
 
   Future<void> login() async {
+    if (isLoggingIn) return;
+
+    setState(() {
+      errorMessage = "";
+      isLoggingIn = true;
+    });
+
     final username = usernameController.text.trim();
     final pass = passwordController.text.trim();
     final otp = otpController.text.trim();
 
     if (username.isEmpty || pass.isEmpty || otp.isEmpty) {
-      setState(() => errorMessage = "Please fill all fields.");
+      setState(() {
+        errorMessage = "Please fill all fields.";
+        isLoggingIn = false;
+      });
       return;
     }
 
@@ -42,35 +55,53 @@ class _LoginPageState extends State<LoginPage> {
           .get();
 
       if (result.docs.isEmpty) {
-        setState(() => errorMessage = "Invalid username or password.");
+        setState(() {
+          errorMessage = "Invalid username or password.";
+          isLoggingIn = false;
+        });
         return;
       }
 
-      final userDoc = result.docs.first;
-      final storedOtp = userDoc.data()['otp'];
+      final userDoc = result.docs.first.data();
 
-      if (storedOtp == null || storedOtp != otp) {
-        setState(() => errorMessage = "Invalid OTP.");
+      if (userDoc['otp'] != otp) {
+        setState(() {
+          errorMessage = "Invalid OTP.";
+          isLoggingIn = false;
+        });
         return;
       }
 
-      // ✅ SEND LOGIN ALERT EMAIL
-      final email = userDoc.data()['email'];
-      if (email != null) {
+      final firstName = userDoc['first_name'] ?? '';
+      final lastName = userDoc['last_name'] ?? '';
+      final email = userDoc['email'] ?? '';
+      final fullName = '$firstName $lastName'.trim();
+
+      if (email.isNotEmpty) {
         await LoginNotifier.sendLoginAlert(email);
       }
 
-      // ✅ LOGIN SUCCESS
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
+        MaterialPageRoute(
+          builder: (_) => const HomePage(),
+          settings: RouteSettings(
+            arguments: {
+              'type': 'normal',
+              'name': fullName,
+              'email': email,
+            },
+          ),
+        ),
       );
-    } catch (e) {
+    } catch (_) {
       setState(() => errorMessage = "Login failed.");
+    } finally {
+      setState(() => isLoggingIn = false);
     }
   }
 
-  /// ---------------- GOOGLE → OTP → HOME ----------------
+  // ================= GOOGLE LOGIN =================
 
   Future<void> loginWithGoogle() async {
     if (isSigningIn) return;
@@ -105,19 +136,24 @@ class _LoginPageState extends State<LoginPage> {
               final user = userCredential.user!;
               final uid = user.uid;
 
+              final parts = (user.displayName ?? '').split(' ');
+              final firstName = parts.isNotEmpty ? parts.first : '';
+              final lastName =
+                  parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
               await FirebaseFirestore.instance
                   .collection('users')
                   .doc(uid)
                   .set({
                 'uid': uid,
                 'email': user.email,
-                'name': user.displayName ?? 'Google User',
+                'first_name': firstName,
+                'last_name': lastName,
                 'photoUrl': user.photoURL,
                 'provider': 'google',
                 'createdAt': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
 
-              // ✅ SEND LOGIN ALERT EMAIL
               if (user.email != null) {
                 await LoginNotifier.sendLoginAlert(user.email!);
               }
@@ -130,14 +166,14 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       );
-    } catch (e) {
-      setState(() => errorMessage = "Google Sign-In failed");
+    } catch (_) {
+      setState(() => errorMessage = "Google Sign-In failed.");
     } finally {
       setState(() => isSigningIn = false);
     }
   }
 
-  // ---------------- UI ----------------
+  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
@@ -165,59 +201,55 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 30),
 
-                TextField(
-                  controller: usernameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration("Username"),
-                ),
+                _input(usernameController, "Username"),
                 const SizedBox(height: 15),
-
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration("Password"),
-                ),
+                _input(passwordController, "Password", obscure: true),
                 const SizedBox(height: 15),
+                _input(otpController, "OTP", number: true),
 
-                TextField(
-                  controller: otpController,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration("OTP"),
-                ),
-                const SizedBox(height: 10),
-
-                if (errorMessage.isNotEmpty)
-                  Text(
-                    errorMessage,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
+                if (errorMessage.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(errorMessage,
+                      style: const TextStyle(color: Colors.redAccent)),
+                ],
 
                 const SizedBox(height: 25),
 
+                // ================= LOADING BUTTON =================
                 SizedBox(
                   width: double.infinity,
+                  height: 52,
                   child: ElevatedButton(
-                    onPressed: login,
+                    onPressed: isLoggingIn ? null : login,
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: const Color(0xFF72BF00),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                    child: const Text("Login", style: TextStyle(fontSize: 18)),
+                    child: isLoggingIn
+                        ? LoadingAnimationWidget.staggeredDotsWave(
+                            color: Colors.white,
+                            size: 32,
+                          )
+                        : const Text(
+                            "Login",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
                 Center(
                   child: TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const SignupPage(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const SignupPage()),
                       );
                     },
                     child: const Text(
@@ -237,15 +269,18 @@ class _LoginPageState extends State<LoginPage> {
                       side: const BorderSide(color: Colors.white70),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    child: Text(
-                      isSigningIn
-                          ? "Signing in..."
-                          : "Continue with Google",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
-                    ),
+                    child: isSigningIn
+                        ? LoadingAnimationWidget.horizontalRotatingDots(
+                            color: Colors.white,
+                            size: 24,
+                          )
+                        : const Text(
+                            "Continue with Google",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
                   ),
                 ),
               ],
@@ -256,15 +291,26 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
-      filled: true,
-      fillColor: Colors.white.withOpacity(0.05),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+  Widget _input(
+    TextEditingController controller,
+    String label, {
+    bool obscure = false,
+    bool number = false,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: number ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
       ),
     );
   }
